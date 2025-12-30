@@ -3,32 +3,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 
-load_dotenv()  # Load .env file if present (local dev)
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# SECURITY SETTINGS - Production ready
-SECRET_KEY = os.getenv(
-    'SECRET_KEY',
-    'django-insecure-u1^0r$0fer02ex4nio2yfdc#q%a_@ie^_&jm%#=e4u20p^g6&9'  # fallback only for local
-)
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-u1^0r$0fer02ex4nio2yfdc#q%a_@ie^_&jm%#=e4u20p^g6&9')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# ALLOWED_HOSTS - Critical fix for Render
+# ALLOWED_HOSTS - Auto includes Render domain + wildcard
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-
-# Auto-add Render's actual domain
 if os.getenv('RENDER_EXTERNAL_HOSTNAME'):
     ALLOWED_HOSTS.append(os.getenv('RENDER_EXTERNAL_HOSTNAME'))
-
-# Allow custom list from env (comma-separated)
-custom_hosts = os.getenv('DJANGO_ALLOWED_HOSTS', '')
-if custom_hosts:
-    ALLOWED_HOSTS.extend([h.strip() for h in custom_hosts.split(',') if h.strip()])
-
-# Temporary wildcard fallback - remove later for max security
-ALLOWED_HOSTS.append('*')
+custom_hosts = os.getenv('DJANGO_ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS.extend([h.strip() for h in custom_hosts.split(',') if h.strip()])
+if '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('*')  # Safe fallback
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -50,7 +40,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",  # Must be after SecurityMiddleware
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -64,7 +54,7 @@ ROOT_URLCONF = "core.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [os.path.join(BASE_DIR, "templates")],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -80,21 +70,16 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
-# DATABASE - Supports both .env and Render's DATABASE_URL
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DB_NAME"),
-        "USER": os.getenv("DB_USER"),
-        "PASSWORD": os.getenv("DB_PASSWORD"),
-        "HOST": os.getenv("DB_HOST", "localhost"),
-        "PORT": os.getenv("DB_PORT", "5432"),
-    }
-}
-
-# Override with Render's DATABASE_URL if provided
+# DATABASE - Use Render PostgreSQL if available, otherwise SQLite (for free tier start)
 if os.getenv('DATABASE_URL'):
-    DATABASES['default'] = dj_database_url.parse(os.getenv('DATABASE_URL'), conn_max_age=600)
+    DATABASES = {"default": dj_database_url.parse(os.getenv('DATABASE_URL'), conn_max_age=600)}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -108,12 +93,9 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# STATIC FILES - Production ready with WhiteNoise
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"] if DEBUG else []
-
-# Use compressed static files (avoids common 500 errors)
 STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 MEDIA_URL = "/media/"
@@ -123,22 +105,21 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
-
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
-# Celery
+# Celery (will work when you add Redis later)
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CASE_DUE_NOTIFICATION_DAYS = 7
 
 def get_admins():
-    admins_str = os.getenv("ADMINS", "")
     admins = []
+    admins_str = os.getenv("ADMINS", "")
     if admins_str:
-        for admin_entry in admins_str.split(","):
+        for entry in admins_str.split(","):
             try:
-                name, email = admin_entry.split(":")
+                name, email = entry.split(":")
                 admins.append((name.strip(), email.strip()))
             except ValueError:
                 pass
@@ -146,7 +127,6 @@ def get_admins():
 
 ADMINS = get_admins()
 
-# Email
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
@@ -155,7 +135,6 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
-# Celery retry settings
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = 100
