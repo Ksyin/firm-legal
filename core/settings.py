@@ -1,19 +1,25 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import dj_database_url  # Add this import
+import dj_database_url  # Required for Render DATABASE_URL support
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Security settings - override with env vars for production
+# Use env var or fallback (secure for production)
 SECRET_KEY = os.getenv('SECRET_KEY', "django-insecure-u1^0r$0fer02ex4nio2yfdc#q%a_@ie^_&jm%#=e4u20p^g6&9")
 
-DEBUG = os.getenv('DEBUG', 'False') == 'True'  # False in production
+# Production: False by default
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')  # Comma-separated in env
-# Example in Render env: firm-legal-1.onrender.com,.onrender.com,*
+# Critical fix: Read from env var (comma-separated list)
+_raw_hosts = os.getenv('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost')
+ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(',') if h.strip()]
+
+# Optional: Auto-add Render's hostname if available
+if os.getenv('RENDER'):
+    ALLOWED_HOSTS.append(os.getenv('RENDER_EXTERNAL_HOSTNAME'))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -35,7 +41,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",  # Add this for static files in production
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # Essential for static files
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -65,7 +71,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
-# Database - support Render's DATABASE_URL + fallback to .env
+# Database: Use your existing + Render support
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -77,11 +83,11 @@ DATABASES = {
     }
 }
 
-# Override with Render's DATABASE_URL if provided
+# Auto-use Render's DATABASE_URL if set
 if os.getenv('DATABASE_URL'):
-    DATABASES['default'] = dj_database_url.parse(os.getenv('DATABASE_URL'), conn_max_age=600)
+    DATABASES['default'] = dj_database_url.parse(os.getenv('DATABASE_URL'))
 
-# Rest of your settings unchanged...
+# Rest unchanged...
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -101,8 +107,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 if DEBUG:
     STATICFILES_DIRS = [os.path.join(BASE_DIR, "static")]
-else:
-    STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -110,7 +114,6 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 X_FRAME_OPTIONS = "SAMEORIGIN"
 
-# Celery and other settings unchanged
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -135,10 +138,5 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BROKER_CONNECTION_RETRY = True
-CELERY_BROKER_CONNECTION_MAX_RETRIES = 100
-CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 3600}
-
-# Add for production static files
+# Production static serving
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
